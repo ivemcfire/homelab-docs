@@ -53,3 +53,17 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 | 27 | 2026-05-09 | L | Frigate cam19_yicam codec parse fail | yi-hack stream had AAC audio + h264 video; ffmpeg couldn't lock codec params on sub-stream. | Switched cam19 to single main stream input with `-an` (drop audio) + bigger probesize. cam19 recording at 7 fps now. | done |
 | 28 | 2026-05-09 | L | Frigate cam17 4K HEVC mislabeled | go2rtc URL `h264Preview_01_main` actually delivers H.265 because cam set to HEVC. Cosmetic — NVDEC handles both. | Update Frigate config comment for cam17 stream codec note. | open |
 
+
+---
+
+## 2026-05-09 follow-up (fix pass on open items)
+
+| # | Update |
+|---|--------|
+| 3 | done — applied `homelab/role` labels: k3master=control-plane, k3frigate=video, one6t=mqtt, one62=db, one61=app. No workloads pinned via these yet (advisory). |
+| 5 | reclassified — phone Adreno GPU is the intended target (arm64 image, OpenCL). Item was mistaken about k3frigate as target. Logs show last detection 2026-04-27 (12d stale) — pod alive but worker stuck. Separate ticket. |
+| 6 | done — deleted errored pods (open-webui-...-98m7d, opencl-test, frigate-backup-test) + 3 failed Jobs. Frigate-backup CronJob has `successfulJobsHistoryLimit/failedJobsHistoryLimit` already; no recurrence expected. |
+| 11 | partial — corrected pool annotation `default` -> `homelab-pool`. Real cause: shared-IP collision with guitar-frontend on .202. Runbook saved at `~/homelab-docs/lb-guitar-backend-fix.md` with 3 fix paths (ClusterIP / different IP / shared-IP annotation). User decision required. |
+| 20 | partial — rotated MetalLB memberlist secret key (was version-88 mismatch causing decryption failures since k3s 1.34/1.35 skew). Speakers restarted clean. Residual UDP probe warnings remain due to phone-LAN split-brain (same root as #2) — TCP gossip works, MetalLB functional, treat as cosmetic until cross-node Pod-IP routing fixed. |
+| 21 | runbook saved — `~/homelab-docs/jumphost-fix-runbook.md`. Sudo on .62 needs interactive pwd; user runs when ready. |
+| 28 | done — Frigate config comment updated to clarify Reolink URL says `h264Preview` but delivers actual cam codec (H.265 in our config). |
