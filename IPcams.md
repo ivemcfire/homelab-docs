@@ -249,6 +249,15 @@ Three CLI scripts on k3master (in PATH after ~/bin: prepend) for browsing Frigat
 | frigate-strangers [limit] | Lists recent events with no sub_label (DT didn't recognize a known face — likely strangers). |
 | frigate-subject <name> [limit] | Lists events where DT matched the named subject (e.g. frigate-subject Ivalin). |
 | frigate-sublabels [limit] | Distribution count of all sub_labels across recent events (sanity check for DT push-back). |
+| frigate-family [limit] | Lists events recognized as any family member (Goran/Ivalin/Miraya/Rayna/Virginia). |
+
+### Bookmark URLs (Frigate UI sort)
+
+- Family events: `http://192.168.100.209:5000/events?sub_labels=Goran,Ivalin,Miraya,Rayna,Virginia`
+- All events (UI default): `http://192.168.100.209:5000/events`
+- Strangers (no sub_label): UI doesn't support negation — use `frigate-strangers` CLI instead
+
+For per-subject filtering append e.g. `?sub_labels=Ivalin`.
 
 Sub_labels are populated by Double Take when it matches a face with confidence ≥ 70 (per detect.match.confidence in DT config). Strangers and unknown faces get no sub_label, so frigate-strangers is the natural feed for browse non-family clips. Frigate UI search box also accepts sub_labels:Ivalin or similar.
 
