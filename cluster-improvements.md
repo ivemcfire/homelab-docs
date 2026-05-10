@@ -67,3 +67,5 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 | 20 | partial — rotated MetalLB memberlist secret key (was version-88 mismatch causing decryption failures since k3s 1.34/1.35 skew). Speakers restarted clean. Residual UDP probe warnings remain due to phone-LAN split-brain (same root as #2) — TCP gossip works, MetalLB functional, treat as cosmetic until cross-node Pod-IP routing fixed. |
 | 21 | runbook saved — `~/homelab-docs/jumphost-fix-runbook.md`. Sudo on .62 needs interactive pwd; user runs when ready. |
 | 28 | done — Frigate config comment updated to clarify Reolink URL says `h264Preview` but delivers actual cam codec (H.265 in our config). |
+
+| 21 | DONE 2026-05-10: applied sed to /etc/network/interfaces on jumphost (.62), removed live .152 binding via ip addr del. arp-scan confirms only .62 answers, .152 silent. |
