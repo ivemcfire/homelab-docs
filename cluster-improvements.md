@@ -69,3 +69,5 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 | 28 | done — Frigate config comment updated to clarify Reolink URL says `h264Preview` but delivers actual cam codec (H.265 in our config). |
 
 | 21 | DONE 2026-05-10: applied sed to /etc/network/interfaces on jumphost (.62), removed live .152 binding via ip addr del. arp-scan confirms only .62 answers, .152 silent. |
+
+| 11 | DONE 2026-05-10 (path A): converted guitar-backend Service to ClusterIP. Frontend reaches via in-cluster DNS (verified 404 from / = service alive). loadBalancerIP/.202 collision moot. |
