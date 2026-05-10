@@ -240,6 +240,18 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 
 > **DT path:** Frigate person event → MQTT topic frigate/events → Double Take → snapshot pull → CompreFace k3face app (key wired). Matches stored at /mnt/frigate/double-take/matches/<subject>/. CompreFace UI: http://192.168.100.212/. Reference photos must be enrolled per subject before any match works (5 subjects exist with 0 images post-purge).
 
+### Event filter helpers (on k3master, ~/bin/)
+
+Three CLI scripts on k3master (in PATH after ~/bin: prepend) for browsing Frigate events by face recognition status:
+
+| Command | What it does |
+|---------|--------------|
+| frigate-strangers [limit] | Lists recent events with no sub_label (DT didn't recognize a known face — likely strangers). |
+| frigate-subject <name> [limit] | Lists events where DT matched the named subject (e.g. frigate-subject Ivalin). |
+| frigate-sublabels [limit] | Distribution count of all sub_labels across recent events (sanity check for DT push-back). |
+
+Sub_labels are populated by Double Take when it matches a face with confidence ≥ 70 (per detect.match.confidence in DT config). Strangers and unknown faces get no sub_label, so frigate-strangers is the natural feed for browse non-family clips. Frigate UI search box also accepts sub_labels:Ivalin or similar.
+
 > **cam07 note:** Uses main 4K stream for both detect and record. Frigate downscales 4K to 720p
 > for detection — preserves native pixel detail for face recognition. Sub stream (640x360) is
 > too low resolution. Higher CPU usage than other cameras due to 4K H.265 decode.
