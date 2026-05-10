@@ -1,6 +1,8 @@
 # IP Cameras — k3master Homelab
 
-Last updated: 2026-04-05 (cam07 streams, Frigate, Cloudflare updated)
+Last updated: 2026-04-28
+
+**Network (V14):** Cameras on flat `192.168.100.0/24` via Service Room Zyxel switch. VLAN 30 deferred to Phase 2+. Frigate compute target = k3node1 (i5-6600 + GTX 1050Ti) once Phase 2 onboarding complete.
 
 ---
 
@@ -61,9 +63,14 @@ Last updated: 2026-04-05 (cam07 streams, Frigate, Cloudflare updated)
 | reolink | 192.168.100.17 | 192.168.100.254 | 192.168.100.254 | Configured |
 | cam18 | 192.168.100.18 | — | — | Pending config |
 | yi-cam | 192.168.100.19 | 192.168.100.1 | — | Configured (Wi-Fi) |
+| cam21 ANNKE | 192.168.100.21 | 192.168.100.254 | 192.168.100.254 | Configured (deployed off bench 2026-05-10) |
+| cam22 ANNKE | 192.168.100.22 | 192.168.100.254 | 192.168.100.254 | Configured (Attic, deployed earlier) |
+| cam23 ANNKE | 192.168.100.23 | — | — | Pending — same hardware as .21/.22 |
+| cam24 ANNKE | 192.168.100.24 | — | — | Pending — same hardware as .21/.22 |
 
 **Subnet:** 192.168.100.0/24
 **IP range reserved for Xiongmai cameras:** .11–.18
+**ANNKE C500 (5MP H.264, Hikvision-OEM):** .21–.24
 **Reolink:** .17 | **Yi cam:** .19
 
 ---
@@ -189,7 +196,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | Status | **Deployed and running** |
 | NVR | Frigate 0.17.2 (`ghcr.io/blakeblackshear/frigate:0.17.1`) |
 | Namespace | `frigate` |
-| MetalLB IP | 192.168.100.211 (Web UI :5000, RTSP restream :8554) |
+| MetalLB IP | 192.168.100.209 (Web UI :5000, RTSP restream :8554) |
 | Node | k3master (amd64 — CPU video decode) |
 | MQTT | Mosquitto at 192.168.100.207:1883 |
 | Storage — primary | Local 1.8TB HDD on k3master (`/dev/sda1` → `/mnt/frigate`) |
@@ -225,9 +232,11 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | cam01_front_yard | Xiongmai .11 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
 | cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
 | cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
-| cam04–06 | Xiongmai .14–.16 | — | — | No (disabled) |
+| cam04–06 | Xiongmai .14–.16 | — | — | No (cam14 disabled — replaced by cam21 ANNKE; cam15/.16 active) |
 | cam07_reolink | Reolink .17 | **Main 4K → 1280x720 @ 10fps** | Main 4K H.265 @ 25fps | **Yes** |
 | cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No |
+| cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No |
+| cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No |
 
 > **cam07 note:** Uses main 4K stream for both detect and record. Frigate downscales 4K to 720p
 > for detection — preserves native pixel detail for face recognition. Sub stream (640x360) is
