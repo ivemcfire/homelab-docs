@@ -71,3 +71,5 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 | 21 | DONE 2026-05-10: applied sed to /etc/network/interfaces on jumphost (.62), removed live .152 binding via ip addr del. arp-scan confirms only .62 answers, .152 silent. |
 
 | 11 | DONE 2026-05-10 (path A): converted guitar-backend Service to ClusterIP. Frontend reaches via in-cluster DNS (verified 404 from / = service alive). loadBalancerIP/.202 collision moot. |
+
+| 23 | DONE 2026-05-10: cam22 NTP sync verified — embedded timestamp now  matches actual date. Time appears UTC (cam timezone may need Europe/Sofia adjustment for OSD readability — cosmetic). |
