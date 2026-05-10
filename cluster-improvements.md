@@ -76,3 +76,7 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 
 | 2 | DONE 2026-05-10: added 3 static routes on k3frigate (10.0.1.0/30, 10.0.2.0/30, 10.0.3.0/30 via 192.168.100.52). Persisted in /etc/netplan/50-cloud-init.yaml. VXLAN flow restored: k3frigate -> phone Pod CIDRs (10.42.{1,2,3}.x) all alive. Verified mosquitto.hydroflow:1883, gitea.default:80, postgres.hydroflow:5432 all reachable from frigate-namespace pods. |
 | 12 | Updated 2026-05-10: underlying split-brain (#2) now fixed too. Local mosquitto in frigate ns still in place — redundant but kept for isolation; revisit if cleanup desired. |
+
+| 29 | DONE 2026-05-10: hydroflow postgres backup CronJob deployed (hydroflow ns). pg_dump 03:30 daily -> scp to user@192.168.100.62:/home/user/backups/hydroflow-postgres/. 14-day retention. Reuses jumphost-ssh-key secret (copied from frigate ns). Manually tested: 3.8K dump landed on jumphost. |
+| 30 | DONE 2026-05-10: hydroflow postgres migrated from one62 (phone eMMC, 5Gi local-path) to k3frigate (i5-6600 SATA, 10Gi hostPath /mnt/frigate/hydroflow-postgres). Live data piped via kubectl exec pg_dump | psql. 7 tables verified identical row counts. Service selector swapped to instance=new. hydroflow-backend + chickenflow-backend restarted, reconnected. Old deploy scaled to 0 (kept 48h for rollback). Phase 2 (intermediate target = k3frigate; SP4 future home). |
+| 31 | DONE 2026-05-10: frigate-backup CronJob target IP corrected .152 -> .62 (was failing silently since jumphost moved). |
