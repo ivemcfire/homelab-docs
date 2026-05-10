@@ -73,3 +73,6 @@ Indexed from `~/.claude/library.md`. Source-of-truth path: `user@192.168.100.52:
 | 11 | DONE 2026-05-10 (path A): converted guitar-backend Service to ClusterIP. Frontend reaches via in-cluster DNS (verified 404 from / = service alive). loadBalancerIP/.202 collision moot. |
 
 | 23 | DONE 2026-05-10: cam22 NTP sync verified — embedded timestamp now  matches actual date. Time appears UTC (cam timezone may need Europe/Sofia adjustment for OSD readability — cosmetic). |
+
+| 2 | DONE 2026-05-10: added 3 static routes on k3frigate (10.0.1.0/30, 10.0.2.0/30, 10.0.3.0/30 via 192.168.100.52). Persisted in /etc/netplan/50-cloud-init.yaml. VXLAN flow restored: k3frigate -> phone Pod CIDRs (10.42.{1,2,3}.x) all alive. Verified mosquitto.hydroflow:1883, gitea.default:80, postgres.hydroflow:5432 all reachable from frigate-namespace pods. |
+| 12 | Updated 2026-05-10: underlying split-brain (#2) now fixed too. Local mosquitto in frigate ns still in place — redundant but kept for isolation; revisit if cleanup desired. |
