@@ -233,7 +233,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
 | cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
 | cam04–06 | Xiongmai .14–.16 | — | — | No | — (cam14 disabled, replaced by cam21; cam15/.16 active no DT) |
-| cam07_reolink | Reolink .17 | **Main 4K → 1280x720 @ 10fps** | Main 4K H.265 @ 25fps | No (was Yes, off post-purge) | **Yes — snapshot.attempts=5** (cam OVEREXPOSED — fix Reolink display settings before expecting matches) |
+| cam07_reolink | Reolink .17 | **Main 4K → 1280x720 @ 10fps** | Main 4K H.265 @ 25fps | No (was Yes, off post-purge) | **Yes — snapshot.attempts=5** (low event count due to area traffic, not a HW issue) |
 | cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No | Not in DT cameras list |
 | cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No | **Yes — snapshot.attempts=5** (cam network DOWN as of 2026-05-10) |
 | cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No (toggled on→off 2026-05-10, DT path chosen) | **Yes — snapshot.attempts=5** (added 2026-05-10 mirroring cam22) |
