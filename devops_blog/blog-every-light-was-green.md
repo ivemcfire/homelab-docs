@@ -6,6 +6,12 @@
 
 ---
 
+![A green dashboard inside a dead cluster, and the OOB watcher that would have caught it](images/cloudflared-ha-and-oob_small.jpg)
+
+*Last time the lesson was about high-availability ingress. This time it is about high-availability seeing.*
+
+---
+
 The original version of this post was about one Fluent Bit sidecar shipping logs from one application pod. The pattern was correct and the manifest still works. But it was a single technique in service of a story I had not yet had the bruise to tell. The seven-hour cluster outage covered in the previous post supplied the bruise. This post is what the bruise taught.
 
 The diagnostic moment was small: I checked Grafana to find out what was happening to the cluster, and Grafana was a pod inside the cluster. The Uptime Kuma that was supposed to ping me was a pod inside the cluster. The Alertmanager whose job was to escalate was a pod inside the cluster, and its only notification path was a Telegram bot reachable through the cluster's outbound network. Every layer of the observability stack was a tenant of the thing it was supposed to observe. There was no outside.
@@ -13,6 +19,34 @@ The diagnostic moment was small: I checked Grafana to find out what was happenin
 This post is the remediation: moving the watcher out, picking a notification channel that does not co-fail with what it watches, and discovering a small back-catalogue of bugs along the way that all share the same shape — every layer claiming "fine" against its own definition of fine while the gap between definitions ate the system.
 
 ## Architecture Before
+
+```
+                  ┌─────────────────────────────────────────┐
+   internet ──→ CF tunnel ──→ monitor.ayurforlife.eu        │
+                                  (Grafana's own login,     │
+                                   200 OK to anyone)        │
+                                          │                 │
+                                          ▼                 │
+                       ┌──────────────────────────────────┐ │
+                       │           k3s cluster            │ │
+                       │  ┌────────────────────────────┐  │ │
+                       │  │ monitoring/                │  │ │
+                       │  │   prometheus               │  │ │
+                       │  │   grafana  ⇠ pinned to .52 │  │ │
+                       │  │   alertmanager ──→ Telegram│──┼─┼─→ via cluster egress
+                       │  │   uptime-kuma ⇠ tenant of  │  │ │   (cluster has to be up)
+                       │  │                 what it    │  │ │
+                       │  │                 watches    │  │ │
+                       │  └────────────────────────────┘  │ │
+                       │   .52  .53  .56  one61/62/6t     │ │
+                       └──────────────────────────────────┘ │
+                                                            │
+                       jumphost .62                         │
+                       ┌──────────────────────────────────┐ │
+                       │  uptime-kuma (Docker) :3001      │ │
+                       │  LAN only, idle, doing nothing   │ │
+                       └──────────────────────────────────┘ │
+```
 
 - `kube-prometheus-stack` deployed into the `monitoring` namespace — Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics. The Helm release record had quietly disappeared at some point; `helm list -n monitoring` showed only `loki`, but every other component was still running, untracked. Drift in plain sight.
 - Grafana pinned to `k3master` via `nodeSelector: kubernetes.io/hostname: k3master`. A `.52` outage = no Grafana.
@@ -44,6 +78,25 @@ Grafana 12 ships an internal Kubernetes-style apiserver — *unified storage* �
 
 The fix was to pin the image to `grafana/grafana:11.5.2`. Idle now sits at ~210 MiB and 5–25 % CPU. Query latency `200 ms → 130 ms`. The dashboards that had been saved into G12's unified storage do not survive the downgrade because G11 cannot read it; I restored them from JSON exports on disk. The image pin and the recovery procedure are written into the dashboard README.
 
+The working `docker run` is small enough to live in the blog:
+
+```bash
+docker run -d \
+  --name grafana \
+  --restart unless-stopped \
+  --memory 384m \
+  --memory-swap 512m \
+  -p 3000:3000 \
+  -v /home/user/grafana/data:/var/lib/grafana \
+  -v /home/user/grafana/provisioning:/etc/grafana/provisioning:ro \
+  -e GF_SECURITY_ADMIN_USER=admin \
+  -e GF_SECURITY_ADMIN_PASSWORD=*** \
+  -e GF_AUTH_ANONYMOUS_ENABLED=false \
+  -e GF_ANALYTICS_REPORTING_ENABLED=false \
+  -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
+  grafana/grafana:11.5.2
+```
+
 The general rule: not every Grafana release is appropriate for every host. A pinned image and a documented incompatibility is worth more than the freshness of `:latest`.
 
 ## The Channel Lesson
@@ -66,11 +119,88 @@ The deeper lesson — and the reason this generalises beyond Telegram — is tha
 
 ## Things That Went Wrong
 
-**The Tailscale `--accept-routes` hijack had a sibling.** The previous post documented the fix on `.52`: a subnet router that advertises `192.168.100.0/24` must not accept it back. Twenty-four hours later, the Frigate backup CronJob was logging `ssh: connect to host 192.168.100.62 port 22: Operation timed out` from inside cluster pods. LAN ping `.52` → `.62` failed. Tailscale ping to `100.85.33.36` worked. The exact same bug, on `.62`, missed when the rule was applied yesterday. `tailscale debug prefs` on `.62` confirmed `RouteAll: true` while `.62` itself was advertising the LAN. One `sudo tailscale set --accept-routes=false` and roughly thirty hours of stuck `postgres-backup` CronJob runs across `frigate`, `chickenflow`, `hydroflow`, and `face-recognition` namespaces recovered on the next schedule. Rule restated: every subnet-routing peer needs this rule, on the day it starts advertising, including the second one.
+**The Tailscale `--accept-routes` hijack had a sibling.** The previous post documented the fix on `.52`: a subnet router that advertises `192.168.100.0/24` must not accept it back. Twenty-four hours later, the Frigate backup CronJob started doing this from inside cluster pods:
 
-**The phone-node CNI quietly fails closed.** ChickenFlow's `postgres-backup` CronJob shipped without a `nodeSelector`. For roughly half of scheduled runs, the scheduler placed it on a phone node — `one6t` or `one61` — where in-pod DNS does not reach CoreDNS at `10.43.0.10`. The Alpine init step `apk add openssh-client` failed silently because `dl-cdn.alpinelinux.org` would not resolve; the subsequent `pg_dump -h chickenflow-postgres` failed visibly with `could not translate host name`. HydroFlow's identical-shape CronJob had `nodeSelector: kubernetes.io/hostname: k3frigate` from day one and never saw the bug — its survival was masking the fault for everyone else. Fix: pin chickenflow's CronJob to `k3master` with a matching `nodeSelector`. The deeper bug — some interaction between flannel and the USB-tethered `10.0.x.x` interfaces on the phones — is its own investigation. The practical workaround: do not put DNS-dependent workloads on phone nodes. The phones serve Adreno OpenCL inference and routed IP traffic just fine; what they cannot serve is anything that needs Kubernetes cluster DNS.
+```
+[Thu May 28 02:00:02 UTC 2026] Starting rsync mirror to jumphost...
+ssh: connect to host 192.168.100.62 port 22: Operation timed out
+rsync: connection unexpectedly closed (0 bytes received so far) [sender]
+rsync error: unexplained error (code 255) at io.c(232) [sender=3.4.3]
+```
 
-**`CPUThrottlingHigh` was the chart talking, not the workload.** Every `node-exporter` pod was being CFS-throttled 52–85 % of periods. Actual CPU usage was 3–20 milli-cores. The kube-prometheus-stack chart ships `limits.cpu: 200m`, which sits just below the burst envelope of a node-exporter scrape — each 30-second scrape spends a few milliseconds clipping the limit and waits out the rest of the 100 ms CFS period. The alert's hold window made a millisecond-scale reality look chronic. Removing the CPU limit (the 50 m request stays for scheduling) dropped the throttle rate to zero on the next sample. The alert was correctly describing real CFS behaviour; the CFS behaviour was correctly responding to the chart's defaults; the chart's defaults were wrong for this workload. Three layers each telling the truth in a way that added up to a falsehood.
+LAN ping `.52` → `.62` failed. Tailscale ping to `100.85.33.36` worked. The exact same bug, on `.62`, missed when the rule was applied yesterday. `tailscale debug prefs` on `.62`:
+
+```json
+{
+  "RouteAll": true,
+  "AdvertiseRoutes": ["192.168.100.0/24"]
+}
+```
+
+`.62` was both advertising the LAN and accepting it back — `ip route show table 52` confirmed `192.168.100.0/24 dev tailscale0` in the routing table that rule 5270 sent everything through, so reply packets to LAN peers were leaving via WireGuard while inbound arrived on `enp1s0`. Asymmetric, no return path. One `sudo tailscale set --accept-routes=false` and roughly thirty hours of stuck `postgres-backup` CronJob runs across `frigate`, `chickenflow`, `hydroflow`, and `face-recognition` namespaces recovered on the next schedule. Rule restated: every subnet-routing peer needs this rule, on the day it starts advertising, including the second one.
+
+**The phone-node CNI quietly fails closed.** ChickenFlow's `postgres-backup` CronJob shipped without a `nodeSelector`. For roughly half of scheduled runs, the scheduler placed it on a phone node — `one6t` or `one61` — where in-pod DNS does not reach CoreDNS at `10.43.0.10`. Reproducing under a debug Pod pinned to `one6t` made the failure visible:
+
+```console
+$ kubectl exec -n chickenflow dns-test -- cat /etc/resolv.conf
+search chickenflow.svc.cluster.local svc.cluster.local cluster.local
+nameserver 10.43.0.10
+options ndots:5
+
+$ kubectl exec -n chickenflow dns-test -- nslookup chickenflow-postgres
+;; connection timed out; no servers could be reached
+command terminated with exit code 1
+
+$ kubectl exec -n chickenflow cf-debug -- sh -c \
+    "PGPASSWORD=*** pg_dump -h chickenflow-postgres -U *** -d *** --schema-only"
+pg_dump: error: could not translate host name "chickenflow-postgres" to address: Try again
+```
+
+The Alpine init step `apk add openssh-client` (which would have produced `ssh` for the subsequent `scp` to `.62`) failed *silently* because `dl-cdn.alpinelinux.org` would not resolve either. The `pg_dump` failed visibly. The Job controller retried, exhausted `backoffLimit`, deleted the pod within ~30 seconds, and left nothing to inspect — which is why this looked like a Tailscale problem for so long even after the Tailscale problem was fixed.
+
+HydroFlow's identical-shape CronJob had this from day one:
+
+```yaml
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: k3frigate
+```
+
+It never saw the bug — its survival was masking the fault for everyone else. Same line added to chickenflow's CronJob (pinned to `k3master` for control-plane consistency) and the next manual run completed in 21 seconds, scp'd a 26 KiB dump to `.62`, and applied retention. The deeper bug — some interaction between flannel and the USB-tethered `10.0.x.x` interfaces on the phones — is its own investigation. The practical workaround: do not put DNS-dependent workloads on phone nodes. The phones serve Adreno OpenCL inference and routed IP traffic just fine; what they cannot serve is anything that needs Kubernetes cluster DNS.
+
+**`CPUThrottlingHigh` was the chart talking, not the workload.** Every `node-exporter` pod was being CFS-throttled 52–85 % of periods. Actual CPU usage was 3–20 milli-cores. Side by side:
+
+| pod | CPU used | throttled CFS periods |
+|---|---|---|
+| `node-exporter-k2w8z` | 15.9 m | **85.0 %** |
+| `node-exporter-2f4rx` | 19.8 m | **85.1 %** |
+| `node-exporter-lzhv6` | 15.8 m | **84.9 %** |
+| `node-exporter-fhc25` | 8.7 m | 66.0 % |
+| `node-exporter-vnm5v` | 7.7 m | 56.2 % |
+| `node-exporter-z6h62` | 3.5 m | 52.5 % |
+
+The kube-prometheus-stack chart ships `limits.cpu: 200m`, which sits just below the burst envelope of a node-exporter scrape — each 30-second scrape spends a few milliseconds clipping the limit and waits out the rest of the 100 ms CFS period. The alert's hold window made a millisecond-scale reality look chronic. The fix is a one-key strategic-merge patch:
+
+```yaml
+# patch-node-exporter-resources.yaml — drop only limits.cpu
+spec:
+  template:
+    spec:
+      containers:
+        - name: node-exporter
+          resources:
+            limits:
+              memory: 64Mi
+            requests:
+              cpu: 50m
+              memory: 32Mi
+```
+
+Applied with `kubectl patch ds -n monitoring node-exporter --patch-file ... --type=merge`. The 50 m request stays for scheduling; the cgroup can now burst freely during the scrape window. Throttle rate dropped to zero on the next sample. The alert was correctly describing real CFS behaviour; the CFS behaviour was correctly responding to the chart's defaults; the chart's defaults were wrong for this workload. Three layers each telling the truth in a way that added up to a falsehood.
 
 ## Source Control Catches Up
 
@@ -83,9 +213,60 @@ The `kube-prometheus-stack` Helm release had drifted out of management before th
 - `homelab-alerts-prometheusrule.yaml` — the homelab-specific PrometheusRule (frigate cameras, frigate service, backups, node health)
 - `README.md` — names what is and is not under source control, gives the recovery commands
 
-The dashboards live in a parallel directory at `homelab-config/jumphost/grafana-dashboards/` with their own README and re-import procedures. Total monitoring-stack files under source control: **1 → 9**. The drift itself is not eliminated, but the next operator (very possibly future me) now has a written starting point rather than a kubectl-archaeology project.
+The dashboards live in a parallel directory at `homelab-config/jumphost/grafana-dashboards/` with their own README and re-import procedures. The repo shape after this round:
+
+```
+homelab-config/
+├── apps/
+│   └── monitoring/
+│       ├── alertmanager.yaml                       # standalone Alertmanager + cm
+│       ├── prometheus-lan-svc.yaml                 # LB IP .202 for .62 Grafana
+│       ├── additional-scrape-configs.yaml          # jumphost node-exporter target
+│       ├── patch-node-exporter-resources.yaml      # drop CPU limit
+│       ├── homelab-alerts-prometheusrule.yaml      # frigate cams, backups, node-health
+│       ├── README.md                               # the drift story, honestly
+│       └── loki/                                   # still helm-tracked
+├── apps/
+│   └── chickenflow/
+│       └── cronjob.yaml                            # nodeSelector pin
+└── jumphost/
+    └── grafana-dashboards/
+        ├── homelab-overview.json
+        ├── node-detail.json
+        └── README.md                               # image-pin rationale + recovery
+```
+
+Total monitoring-stack files under source control: **1 → 9**. The drift itself is not eliminated, but the next operator (very possibly future me) now has a written starting point rather than a kubectl-archaeology project.
 
 ## Architecture After
+
+```
+                  ┌─────────────────────────────────────────────┐
+   internet ──→ CF tunnel ──→ Access SSO ──→ monitor.ayurforlife.eu
+                            └─→ (open)    ──→ uptime.ayurforlife.eu
+                                                       │
+                                                       ▼
+                                ┌───────────────────────────────┐
+                                │        jumphost .62           │
+                                │  ┌─────────────────────────┐  │
+                                │  │ grafana (docker)        │  │
+                                │  │   pinned 11.5.2         │  │
+                                │  │   datasource ─────────┐ │  │
+                                │  │ uptime-kuma (docker)  │ │  │
+                                │  │   canonical OOB       │ │  │
+                                │  └───────────────────────┼─┘  │
+                                └──────────────────────────┼────┘
+                                                           │
+                                                           ▼  192.168.100.202:9090
+                                ┌──────────────────────────────┐
+                                │      k3s cluster             │
+                                │  prometheus  ⇠ scrapes all   │
+                                │  alertmanager  ──→ Gmail SMTP (smtp.gmail.com:587)
+                                │  exporters / sidecars        │
+                                │  (kube-prometheus-stack,     │
+                                │   no longer Helm-tracked)    │
+                                └──────────────────────────────┘
+```
 
 - Prometheus, Alertmanager, in-cluster ServiceMonitors, exporters, sidecars: still in the cluster, where they have to be.
 - Grafana: out of the cluster, on `.62` as a Docker container pinned to `grafana/grafana:11.5.2`, persistent bind-mount, datasource pointed at `monitoring/prometheus-lan` via MetalLB.
