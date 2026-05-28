@@ -24,7 +24,7 @@ All 3 hardened: HTTPS only, HTTP/SNMPv2c-write/Telnet off, EEE off, Loop Guard +
 |----------|----------|-----|------|
 | k3master | IdeaPad Flex 5 (i5-1035G1) | 192.168.100.52 | Server / Control plane / Chrony NTP for cams |
 | k3frigate | i5-6600 + GTX 1050Ti | 192.168.100.56 | Agent — Frigate compute + face-recognition + hydroflow postgres |
-| LocalAI | Win10, i5-10400F + RTX 3060 12GB | 192.168.100.50 | Local AI worker (Ollama) |
+| pc-windows | Win10, i5-10400F + GTX 1050 Ti | 192.168.100.50 | Local AI project scrapped 2026-05-11 (poor Qwen Coder 2.6 results). Idle / not in cluster. |
 | Jumphost | (admin host) | 192.168.100.62 | Network management + backup target. Dual-IP cleanup done 2026-05-10. |
 | acergo16 | Fedora laptop | 192.168.100.65 | Admin station |
 
