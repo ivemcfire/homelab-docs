@@ -1,10 +1,11 @@
 # Master Network & Cluster Architecture Document V17.5
 
-Status: Phase 3. Service room switch live; Attic + Inverter benched. Face Recognition Stack live + tuned. Cross-namespace MQTT split-brain fixed via static routes. HydroFlow postgres on k3frigate. **Control-plane k3s upgraded to v1.35.5+k3s1 (etcd-leak fix). SP4 (.53) RETIRED — Phase 2 HA path dead. Phone nodes tainted to keep general workloads off the 2A-limited phones. k3master LAN migrated to isolated RTL8156 2.5G NIC.**
+Status: Phase 3. Service room switch live; Attic + Inverter benched. **Face Recognition / CompreFace + Double Take stack RETIRED (removed — namespace gone).** Cross-namespace MQTT split-brain fixed via static routes. HydroFlow postgres on k3frigate. **Control-plane k3s upgraded to v1.35.5+k3s1 (etcd-leak fix). SP4 (.53) RETIRED — Phase 2 HA path dead. Phone nodes tainted to keep general workloads off the 2A-limited phones. k3master LAN migrated to isolated RTL8156 2.5G NIC.**
 
 Last updated: 2026-06-22. Supersedes V17.4 (dated 2026-05-10).
 
 > **Changes since V17.4** (see §10 for detail):
+> - **Face-recognition stack (CompreFace + Double Take) RETIRED** — `face-recognition` namespace empty, no double-take/compreface pods. §4 kept as a retirement record only.
 > - k3s control plane upgraded 1.34.3 → **v1.35.5+k3s1** (leaked-etcd-backend CPU bug fix); phones on 1.35.0+k3s3.
 > - **SP4 / k3node2 retired 2026-06-08** (swollen battery, digitizer dead). The "SP4 becomes 3rd control-plane / postgres home" plan is cancelled; single-CP SPOF is now permanent until a replacement node is sourced.
 > - **Phone nodes tainted** `node-role/phone=true:NoSchedule` (2026-06-22) — one62 was browning out under load on its 2A supply. Only arm64-native workloads + DaemonSets tolerate the taint; general cluster services pinned to amd64 nodes.
@@ -36,9 +37,9 @@ All 3 hardened: HTTPS only, HTTP/SNMPv2c-write/Telnet off, EEE off, Loop Guard +
 | Hostname | Hardware | IP | Role | k3s |
 |----------|----------|-----|------|-----|
 | k3master | IdeaPad Flex 5 (i5-1035G1) | 192.168.100.52 | Server / Control plane / Chrony NTP for cams | v1.35.5+k3s1 |
-| k3frigate | i5-6600 + GTX 1050Ti | 192.168.100.56 | Agent — Frigate compute + face-recognition + hydroflow postgres | v1.35.5+k3s1 |
+| k3frigate | i5-6600 + GTX 1050Ti | 192.168.100.56 | Agent — Frigate compute + hydroflow postgres | v1.35.5+k3s1 |
 | one61 | OnePlus 6, sdm845, 8GB | 10.0.3.2 (tether) | Agent (arm64) — Adreno inference / arm64 builds | v1.35.0+k3s3 |
-| one62 | OnePlus 6, sdm845, 8GB | 10.0.2.2 (tether) | Agent (arm64) — **power-fault, see §8** | v1.35.0+k3s3 |
+| one62 | OnePlus 6, sdm845, 8GB (NO screen) | 10.0.2.2 (tether) | Agent (arm64) — **power-fault, see §8** | v1.35.0+k3s3 |
 | one6t | OnePlus 6T, sdm845, 6GB | 10.0.1.2 (tether) | Agent (arm64) — mqtt-inference-worker, hydroflow-backend, mosquitto, gitea | v1.35.0+k3s3 |
 | ~~k3sp4~~ | ~~Surface Pro 4~~ | ~~192.168.100.53~~ | **RETIRED 2026-06-08** (swollen battery / dead digitizer). Phantom etcd member — `kubectl delete node k3sp4`. | — |
 | pc-windows | Win10, i5-10400F + GTX 1050Ti | 192.168.100.50 | Local-AI project scrapped 2026-05-11. Idle / not in cluster. | — |
@@ -81,82 +82,28 @@ Mem limit: 4Gi. /dev/shm: 512Mi.
 NTP server for cams: k3master 192.168.100.52.
 Hardening per cam: null gateway, null DNS, NTP=192.168.100.52, P2P/Cloud disabled.
 Config source of truth: hostPath `/mnt/frigate/config/config.yml` on k3frigate (ConfigMap can lag — read/edit the hostPath).
+Local UI: `http://192.168.100.209:5000` (MetalLB). Public: `cams.ayurforlife.eu` (Cloudflare tunnel) — but clip replay starves over the tunnel; use the local IP over Tailscale for replay.
+Recording is **detection-event-only** (`continuous.days: 0`, `motion.days: 0`; detections retained 90d) — the Review timeline has gaps by design.
 
 ### Camera IP allocation (192.168.100.11-29)
 
 | IP | Cam | Model | Codec | Role |
 |----|-----|-------|-------|------|
-| .11-.13, .15, .16 | cam11-16 (XMeye) | NETSurveillance | H.264 | object detection only |
-| .17 | cam17_reolink | Reolink 4K | H.265 | object detection + face recognition |
+| .11-.13, .15 | cam11-15 (XMeye) | NETSurveillance | H.264 | object detection only |
+| .16 | cam16 (XMeye) | NETSurveillance | H.264 | **DISABLED 2026-06-22** (unreachable) |
+| .17 | cam17_reolink | Reolink 4K | H.265 | object detection only |
 | .19 | cam19_yicam | Xiaomi Yi (yi-hack) | H.264 | object detection (single-stream input, -an, big probesize) |
-| .21 | cam21 | ANNKE C500 5MP | H.264 | placement TBD |
-| .22 | cam22 | ANNKE C500 5MP | H.264 | object detection + face recognition (server room) |
+| .21 | cam21 | ANNKE C500 5MP | H.264 | **DISABLED** (placement TBD) |
+| .22 | cam22 | ANNKE C500 5MP | H.264 | **DISABLED** (server room) |
 | .23, .24 | TBD | ANNKE C500 5MP | H.264 | spare |
 
-cam17 + cam22 detect at 1920x1080. Other cams 640x480 sub.
+Frigate native face_recognition DISABLED. ArcFace model stripped. (Face recognition retired — see §4.)
 
-Frigate native face_recognition: DISABLED globally + per-cam (Double Take owns). ArcFace 261MB stripped.
+## 4. Face Recognition Stack — RETIRED
 
-## 4. Face Recognition Stack — Tuned 2026-05-10
+Path B (Double Take + CompreFace, CPU-only on k3frigate) is **decommissioned**: `face-recognition` namespace is empty, no `double-take`/`compreface` pods, ArcFace stripped, per-cam face_recognition off. cam17/cam22 are object-detection (cam22 now disabled).
 
-Path B: Double Take + CompreFace. CPU-only on k3frigate.
-
-### Pipeline
-
-```
-[cam17/cam22 person] -> Frigate event -> mosquitto.frigate -> Double Take
-                                                                 |
-                                                                 v
-                                                       fetches snapshot.jpg?crop=1
-                                                                 |
-                                                                 v
-                                                       POST cropped person to CompreFace
-                                                                 |
-                                                                 v
-                                                       match("Name" >=60%) or unknown
-                                                                 |
-                                                                 v
-                                                       writes Frigate event sub_label
-```
-
-### Components
-
-| Namespace | Component | Image | Memory limit |
-|-----------|-----------|-------|--------------|
-| frigate | mosquitto | eclipse-mosquitto:2 | 128Mi |
-| frigate | double-take | skrashevich/double-take:latest | 512Mi |
-| face-recognition | postgres | postgres:16-alpine | 512Mi |
-| face-recognition | compreface-core | exadel/compreface-core:1.2.0 (CPU build) | 4Gi |
-| face-recognition | compreface-admin | exadel/compreface-admin:1.2.0 | 512Mi |
-| face-recognition | compreface-api | exadel/compreface-api:1.2.0 | 512Mi |
-| face-recognition | compreface-fe | exadel/compreface-fe:1.2.0 | 128Mi |
-
-### DT config tuning (2026-05-10)
-
-- `attempts.latest: 0` (was 8) — skip whole-frame polling, use ONLY cropped event snapshots
-- `attempts.snapshot: 12` (was 5)
-- cam11/12/13/15/16/19_yicam masked — DT skips non-face cams
-- `face_plugins:` empty (was gender,age,mask) — 2-3x faster
-- CompreFace timeout 30s (was 15s)
-- `det_prob_threshold: 0.6`, `match.confidence: 60`, `unknown.confidence: 30`, `min_area: 5000`
-
-### Storage
-
-- Postgres data: hostPath `/mnt/frigate/compreface/postgres`
-- Postgres backups: hostPath `/mnt/frigate/compreface/postgres-backups` (CronJob daily 3am, gzip, 14-day)
-- DT config + matches: hostPath `/mnt/frigate/double-take`
-
-### UI access
-
-- LAN: http://compreface.lan + http://double-take.lan via Traefik IngressRoute. Requires `/etc/hosts` entry `192.168.100.200 compreface.lan double-take.lan`.
-- External (Cloudflare Tunnel) — pending.
-
-### Where matches show in Frigate UI
-
-- Review event card: `person` → `person · Name`
-- Explore filter: Sub Labels dropdown
-- Event detail drawer: sub_label badge
-- MQTT topic `double-take/matches` for automation
+Historical context retained for reference: the stack ran Double Take → CompreFace with cropped event snapshots (`crop=1`), `match.confidence: 60`, library on `/mnt/frigate/double-take` + postgres at `/mnt/frigate/compreface`. If ever rebuilt, those hostPaths and the V17.4 tuning notes are the starting point. **No live face-rec credentials remain in service** (the leaked CompreFace pg/API-key values are dead).
 
 ## 5. Dedicated Frigate MQTT broker — by design
 
@@ -166,12 +113,12 @@ Local mosquitto in `frigate` ns. Kept by design even after split-brain fix:
 - Blast-radius separation
 
 Two brokers, two domains:
-- `mosquitto.frigate` — Frigate, Double Take
+- `mosquitto.frigate` — Frigate events
 - `mosquitto.hydroflow` — ESP32 sensors, hydroflow-backend, chickenflow-backend
 
 ## 6. HydroFlow Postgres (migrated 2026-05-10)
 
-On k3frigate (SATA, 10Gi `/mnt/frigate/hydroflow-postgres`, mem 1Gi). Migrated off one62 phone eMMC.
+On k3frigate (SATA, 10Gi `/mnt/frigate/hydroflow-postgres`, mem 1Gi). Migrated off one62 phone eMMC. Live workload is the `postgres-new` deployment (old `postgres` scaled to 0); Service `postgres` selects `instance=new`. Consumers: `hydroflow-backend`, `hydroflow-antigravity`, and the backup CronJob. chickenflow uses its OWN separate DB (`chickenflow-postgres`), not this one.
 
 Backup CronJob `hydroflow-postgres-backup` (hydroflow ns):
 - 03:30 daily
@@ -191,32 +138,30 @@ Backup CronJob `hydroflow-postgres-backup` (hydroflow ns):
 ## 8. Known Open Issues
 
 - **Single CP SPOF — now permanent-ish.** SP4 (k3node2) was the planned 3rd control plane; it's retired. HA needs a new node. Datastore is embedded etcd on a single server.
-- **one62 power fault.** Browns out / shuts off under load on its 2A supply; NotReady for stretches (was down 2026-06-15 → 22). Software mitigated via the phone taint (§2); real fix is a beefier PSU. Powered USB hub PD is capped ~70%.
+- **one62 power fault.** Browns out / shuts off under load on its 2A supply; NotReady for stretches (down 2026-06-15, recovered 2026-06-22 via manual reboot). Software mitigated via the phone taint (§2); real fix is a beefier PSU. Powered USB hub PD is capped ~70%. (one62 also has no screen — headless, irrelevant to node function.)
 - Minor k8s version skew (servers v1.35.5+k3s1, phones v1.35.0+k3s3) — phones lag intentionally; upgrade when convenient.
 - `default` namespace grab-bag (gitea, loki, uptime-kuma, open-webui, guitar). Migration heavy.
 - Multi-arch image discipline — process/CI rule pending.
 - GardenFlow not deployed — tutor-track milestone.
 - cam15 chronic RTSP outage — physical check needed.
-- Cloudflare Tunnel routes for compreface/double-take external access — pending.
-- **Credential rotation overdue** — HydroFlow postgres weak pwd; CompreFace creds; ZyXEL admin/SNMP. See §9.
-- Double Take UI: SECURE=false (no auth) — tighten before external exposure.
-- k3master LAN linked at 1G not 2.5G (cable) — see §1.
+- Clip replay over Cloudflare tunnel starves (home upstream ~17 Mbit/s + CF buffering) — use Tailscale to the local LB IP.
+- **Credential hygiene** — HydroFlow postgres pwd is weak (internal-gitea only, not public). ZyXEL admin/SNMP. See §9.
 
 ## 9. Credentials
 
-Stored encrypted in `~/homelab-docs/credentials.md.age`. **Plaintext values are NOT inlined in this doc (changed in V17.5).** Decrypt the `.age` file for:
-- 3× ZyXEL switch admin pwd + per-switch SNMP Get community
-- CompreFace postgres (db `frs`) + CompreFace API key (frigate-faces) + UI superadmin
-- HydroFlow postgres (db `hydroflow`) — **rotation overdue, weak password**
-- Double Take UI (currently no auth)
-
-Action: rotate HydroFlow postgres + CompreFace creds, then re-encrypt `credentials.md.age`.
+Stored encrypted in `~/homelab-docs/credentials.md.age` and the internal `homelab-secrets` gitea repo (LAN-only). **Plaintext values are NOT inlined in this doc.** Notes:
+- 3× ZyXEL switch admin pwd + per-switch SNMP Get community.
+- HydroFlow postgres (db `hydroflow`, user `hydroflow_user`) — weak pwd, internal-only; strengthen when convenient.
+- CompreFace creds: **retired stack**, leaked values dead — no action.
+- **Do NOT inline secrets here — this repo is PUBLIC on GitHub.** v17.3/v17.4 leaked now-dead creds in history; rotate (not just scrub) if a live secret ever lands in a public commit.
 
 ## 10. Changelog V17.4 → V17.5 (2026-06-22)
 
+- **Face-recognition stack RETIRED** — CompreFace + Double Take removed; §3 cam roles → object-detection-only; §4 kept as retirement record.
 - **k3s upgrade:** control plane 1.34.3 → v1.35.5+k3s1 (fixes leaked-etcd-backend 100% CPU bug). Phones remain v1.35.0+k3s3.
 - **SP4 retired 2026-06-08:** removed as future 3rd CP / postgres host; SPOF documented as open issue. Phantom etcd member to clean (`kubectl delete node k3sp4`).
 - **Phone taint 2026-06-22:** `node-role/phone=true:NoSchedule` on one61/62/6t; tolerations + workload re-pinning documented in §2.
 - **k3master NIC migration 2026-06-09:** LAN on isolated RTL8156 2.5G controller (§1).
+- **Frigate:** cam16 disabled (unreachable); recording is detection-event-only; replay via Tailscale not Cloudflare (§3).
 - **Alertmanager email disabled 2026-06-22** (§7).
-- **§9 hardening:** inlined plaintext secrets removed; doc points to `credentials.md.age` only.
+- **§9 hardening:** inlined plaintext secrets removed; doc points to `credentials.md.age` only; public-repo warning added.
