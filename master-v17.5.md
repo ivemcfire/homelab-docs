@@ -137,10 +137,10 @@ Backup CronJob `hydroflow-postgres-backup` (hydroflow ns):
 
 ## 8. Known Open Issues
 
-- **Single CP SPOF — now permanent-ish.** SP4 (k3node2) was the planned 3rd control plane; it's retired. HA needs a new node. Datastore is embedded etcd on a single server.
+- **etcd quorum leans on the jumphost — RAM headroom.** The CP SPOF itself is RESOLVED 2026-07-11: 3rd etcd member (etcd-only, no Node object by design) joined from the jumphost (.62) → 3-member quorum across .52/.56/.62; failover test passed (k3s stopped on .52, API stayed up via .56). Residual: .62 has ~700 Mi free of 1.5 GiB — watch etcd RSS under load. Backup plan (single CP on .56 + Frigate-only .52) stays gated on the .52 USB-NIC verdict (check 2026-07-18, decide 2026-07-25).
+- **k3master USB NIC (RTL8156) wedging.** Twice on 2026-07-11: USB LPM U1/U2 transitions → error -108, only an L3 PCI reset recovers; each wedge was a total cluster outage in the 2-member-etcd era (now survivable, but still drops .52). Mitigations in place: `usbcore.quirks=0bda:8156:k` in GRUB + L3-first watchdog. If it recurs: swap power brick, then adapter. 1G link is expected (switch is 1G).
 - **one62 power fault.** Browns out / shuts off under load on its 2A supply; NotReady for stretches (down 2026-06-15, recovered 2026-06-22 via manual reboot). Software mitigated via the phone taint (§2); real fix is a beefier PSU. Powered USB hub PD is capped ~70%. (one62 also has no screen — headless, irrelevant to node function.)
 - Minor k8s version skew (servers v1.35.5+k3s1, phones v1.35.0+k3s3) — phones lag intentionally; upgrade when convenient.
-- `default` namespace grab-bag (gitea, loki, uptime-kuma, open-webui, guitar). Migration heavy.
 - Multi-arch image discipline — process/CI rule pending.
 - GardenFlow not deployed — tutor-track milestone.
 - cam15 chronic RTSP outage — physical check needed.
@@ -156,6 +156,8 @@ Stored encrypted in `~/homelab-docs/credentials.md.age` and the internal `homela
 - **Do NOT inline secrets here — this repo is PUBLIC on GitHub.** v17.3/v17.4 leaked now-dead creds in history; rotate (not just scrub) if a live secret ever lands in a public commit.
 
 ## 10. Changelog V17.4 → V17.5 (2026-06-22)
+
+> Post-V17.5 §8 refresh (2026-07-12): SPOF row replaced (3-member etcd live since 2026-07-11, failover tested), USB-NIC wedge row added, `default`-ns grab-bag row removed (namespace has been empty since 2026-05-13, rows 60/61).
 
 - **Face-recognition stack RETIRED** — CompreFace + Double Take removed; §3 cam roles → object-detection-only; §4 kept as retirement record.
 - **k3s upgrade:** control plane 1.34.3 → v1.35.5+k3s1 (fixes leaked-etcd-backend 100% CPU bug). Phones remain v1.35.0+k3s3.
