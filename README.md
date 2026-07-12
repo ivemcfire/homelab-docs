@@ -35,8 +35,10 @@ homelab-docs/
 
 | Repo | Description |
 |------|-------------|
-| [frigate-k8s](https://github.com/ivemcfire/frigate-k8s) | Frigate NVR K8s manifests — write-back sidecar, RBAC, secret management |
+| [homelab-config](https://github.com/ivemcfire/homelab-config) | Cluster IaC — single source of truth for all manifests (consolidated 2026-07-12) |
+| [frigate-k8s](https://github.com/ivemcfire/frigate-k8s) | ARCHIVED 2026-07-12 — manifests folded into homelab-config apps/frigate/ |
 | [gpu-worker](https://github.com/ivemcfire/gpu-worker) | YOLOv8 inference on ARM64 phone GPUs via ONNX Runtime + OpenCL |
+| [chickenFlow](https://github.com/ivemcfire/chickenFlow) | Angular 21 + ESP32-S2 chicken coop automation |
 
 ## License
 
