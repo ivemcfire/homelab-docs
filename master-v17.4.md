@@ -190,14 +190,14 @@ Future: when SP4 onboarded as 3rd CP (k3node2), migrate postgres to SP4 = proper
 - Locally-administered MAC clusters at .41/.51/.133/.140/.179.
 - cam15 chronic RTSP outage — physical check needed.
 - Cloudflare Tunnel routes for compreface/double-take external access — pending.
-- HydroFlow postgres weak pwd `Ch@ngeMe!2025` — rotation overdue.
+- HydroFlow postgres weak pwd `<redacted — see credentials.md.age>` — rotation overdue.
 
 ## 9. Credentials (encrypted in ~/homelab-docs/credentials.md.age)
 
 Pending re-encrypt 2026-05-10:
 - 3x ZyXEL switch admin pwd + per-switch SNMP Get community
-- CompreFace postgres: compreface / eKtCcoTi63leS1d0Jwh5JQI2 / db frs
-- CompreFace API key (frigate-faces): af6e2d86-3bba-434a-a7d4-d6c6b4ee19d5
+- CompreFace postgres: compreface / <redacted — see credentials.md.age> / db frs
+- CompreFace API key (frigate-faces): <redacted — see credentials.md.age>
 - CompreFace UI superadmin (user-set during bootstrap)
-- HydroFlow postgres: hydroflow_user / Ch@ngeMe!2025 / db hydroflow (rotation overdue)
+- HydroFlow postgres: hydroflow_user / <redacted — see credentials.md.age> / db hydroflow (rotation overdue)
 - Double Take UI: SECURE=false (no auth) — tighten before external exposure

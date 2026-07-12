@@ -4,31 +4,26 @@ Documentation, architecture notes, blog drafts, and project references for a bar
 
 ## Index
 
-See [library.md](library.md) for the full documentation index.
+Start with [master-v17.5.md](master-v17.5.md) (current architecture) and [cluster-improvements.md](cluster-improvements.md) (dated changelog of all infra work).
 
 ## Structure
 
 ```
 homelab-docs/
-  library.md                     # Master index of all documentation
+  master-v17.5.md                # Master architecture doc (current; v17.3/v17.4 kept as history)
+  cluster-improvements.md        # Dated changelog of infra work
+  RECOVERY.md                    # Disaster-recovery runbook (age keys, rebuild order)
   info.md                        # k3master hardware, OS, software reference
   IPcams.md                      # Camera hardware specs, RTSP URLs, codecs
-  project_ideas.md               # GPU compute project ideas (reviewed 3 rounds)
+  phase2-plan.md                 # HA migration plan (completed 2026-05-12/13)
+  project_ideas.md               # GPU compute project ideas
   blog-frigate-nvr.md            # Blog: Frigate NVR on K3s
-  devops_blog/
-    blog-edge-ai-phones.md       # Blog: Edge AI on recycled phones
-  hydroflow/
-    README.md                    # HydroFlow IoT project overview
-    CONTEXT.md                   # Architecture decisions and deployment status
-    backend/
-      handover.md                # API routes, DB schema, environment variables
-  ivmos-guitar-practice-app/
-    README.md                    # Guitar practice app overview
-    frontend/
-      README.md                  # Frontend details
-  sidecar-manifests/
-    README.md                    # Fluent-bit sidecar logging pattern
-    blog-post-sidecar-pattern.md # Blog reference on K8s sidecar pattern
+  jumphost-fix-runbook.md        # Incident runbooks (also: 2026-06-07-usb-power-cascade.md,
+  lb-guitar-backend-fix.md       #   lb-guitar-backend-fix.md)
+  devops_blog/                   # Blog + LinkedIn post sources (published at ivemcfire.github.io)
+  hydroflow/                     # HydroFlow IoT project docs
+  ivmos-guitar-practice-app/     # Guitar practice app docs
+  monitoring-stack/              # Monitoring notes
 ```
 
 ## Related Repos

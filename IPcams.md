@@ -8,7 +8,7 @@ Last updated: 2026-04-28
 
 ## 1. Hardware
 
-### Xiongmai (x7)
+### Xiongmai (x5 active + 1 retired)
 
 | Field | Value |
 |-------|-------|
@@ -16,9 +16,9 @@ Last updated: 2026-04-28
 | Board/Module | IPG-50X10PT-S |
 | Type | PTZ (Pan-Tilt-Zoom) IP Camera |
 | Protocol | ONVIF |
-| Units | 7 (cam11–16, cam18) |
+| Units | 5 active (cam11, cam12, cam13, cam15, cam16) + 1 retired (cam14, replaced 2026-05-10) — cam18 reassigned to Reolink |
 
-### Reolink (x1)
+### Reolink (x2)
 
 | Field | Value |
 |-------|-------|
@@ -30,7 +30,7 @@ Last updated: 2026-04-28
 | ONVIF port | 8000 |
 | Disabled ports | HTTP 80, Media 9000, RTMP 1935 |
 | Face recognition | Enabled (Frigate 0.17 built-in) |
-| Units | 1 (reolink @ .17) |
+| Units | 2 (cam17 @ .17, cam18 @ .18 — same Reolink 4K model) |
 
 ### Yi Home 720p (x1)
 
@@ -48,6 +48,25 @@ Last updated: 2026-04-28
 | Connection | Wi-Fi (requires router gateway .1) |
 | Units | 1 (yi-cam @ .19) |
 
+### ANNKE C500 (x4)
+
+| Field | Value |
+|-------|-------|
+| Manufacturer | ANNKE (Hikvision OEM) |
+| Model | C500 (5MP H.264 turret, fixed lens, NO PTZ) |
+| Protocol | ONVIF, RTSP (TCP) |
+| RTSP port | 554 |
+| ONVIF port | 8000 (ANNKE/Hikvision-OEM default; some firmwares 80) |
+| HTTP port | 80 |
+| ONVIF status | **Enabled** on cam web UI (confirmed 2026-05-11) |
+| ONVIF auth | Digest, same admin creds as web UI |
+| WS-Discovery | UDP 3702 — cams respond to subnet probes |
+| Cam-side analytics | Available (motion, line-cross, intrusion) — **DO NOT WIRE**. Entry-level cam logic = high FP rate. Frigate detector path superior. Leave OFF. |
+| ONVIF event subscription | Available — **DO NOT WIRE** to HA / Frigate / MQTT. Architectural bloat, no signal gain over Frigate. |
+| Probing | Skip onvif-cli / wsdd unless troubleshooting connectivity. RTSP feed sufficient. |
+| Face recognition | None — CompreFace/Double Take stack retired 2026-06 (was: Double Take path via cam21) |
+| Units | 4 (cam21–24; .21 deployed off-bench, .22 Attic, .23/.24 pending) |
+
 ---
 
 ## 2. Camera IP Map
@@ -57,11 +76,11 @@ Last updated: 2026-04-28
 | cam11 | 192.168.100.11 | 192.168.100.254 | 192.168.100.254 | Configured |
 | cam12 | 192.168.100.12 | 192.168.100.254 | 192.168.100.254 | Configured |
 | cam13 | 192.168.100.13 | 192.168.100.254 | 192.168.100.254 | Configured |
-| cam14 | 192.168.100.14 | — | — | Pending config |
+| cam14 | 192.168.100.14 | — | — | **RETIRED 2026-05-10** (Xiongmai, replaced — see cluster-improvements row 38) |
 | cam15 | 192.168.100.15 | — | — | Pending config |
 | cam16 | 192.168.100.16 | — | — | Pending config |
 | reolink | 192.168.100.17 | 192.168.100.254 | 192.168.100.254 | Configured |
-| cam18 | 192.168.100.18 | — | — | Pending config |
+| cam18 | 192.168.100.18 | 192.168.100.254 | 192.168.100.254 | Reolink 4K (same model as cam17) — configured |
 | yi-cam | 192.168.100.19 | 192.168.100.1 | — | Configured (Wi-Fi) |
 | cam21 ANNKE | 192.168.100.21 | 192.168.100.254 | 192.168.100.254 | Configured (deployed off bench 2026-05-10) |
 | cam22 ANNKE | 192.168.100.22 | 192.168.100.254 | 192.168.100.254 | Configured (Attic, deployed earlier) |
@@ -69,9 +88,7 @@ Last updated: 2026-04-28
 | cam24 ANNKE | 192.168.100.24 | — | — | Pending — same hardware as .21/.22 |
 
 **Subnet:** 192.168.100.0/24
-**IP range reserved for Xiongmai cameras:** .11–.18
-**ANNKE C500 (5MP H.264, Hikvision-OEM):** .21–.24
-**Reolink:** .17 | **Yi cam:** .19
+**IP range Xiongmai:** .11–.16 (.14 retired) | **Reolink:** .17–.18 | **ANNKE C500:** .21–.24 | **Yi:** .19
 
 ---
 
@@ -92,7 +109,17 @@ Last updated: 2026-04-28
 |-------|-------|
 | Username | admin |
 | Password | <REOLINK_PASSWORD> |
-| Web UI | https://192.168.100.17 (HTTPS only, HTTP disabled) |
+| Web UI | https://192.168.100.17 (HTTPS only, HTTP disabled) — also covers cam18 (same hardware) |
+
+### ANNKE
+
+| Field | Value |
+|-------|-------|
+| Username | admin |
+| Password | **Same as Reolink admin password** (verified 2026-05-12 in frigate-config cm) |
+| Web UI | http://192.168.100.2[1-4] |
+| ONVIF auth | Same as web UI (admin + password) |
+| K8s secret | `frigate-rtsp-creds` in `frigate` ns, key `FRIGATE_REOLINK_PASSWORD` — **misnomer**: var name predates ANNKE addition, key serves both Reolink (.17/.18) and ANNKE (.21–.24). Rename to `FRIGATE_RTSP_PASSWORD` on next refactor pass. |
 
 ---
 

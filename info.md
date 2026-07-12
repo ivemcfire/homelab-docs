@@ -1,9 +1,9 @@
 # k3master — Machine Reference
 
-Last updated: 2026-04-09
+Last updated: 2026-04-29
 
-Machine-level reference for the k3master control plane node.
-For cluster topology, services, and deployments see the k8s-ops skill (`~/.claude/skills/k8s-ops/`).
+Machine-level reference for k3master (Control Plane 1 in 3-node HA cluster per *Master Network & Cluster Architecture V17.5*).
+For cluster topology, services, and deployments see the k8s-ops skill (`~/.claude/skills/k8s-ops/`) and `~/.claude/library.md`.
 
 ---
 
@@ -17,9 +17,9 @@ For cluster topology, services, and deployments see the k8s-ops skill (`~/.claud
 | Storage | 238.5 GB NVMe SSD (LVM: 100 GB root) |
 | GPU | Intel Iris Plus G1 (Ice Lake, integrated) — QSV for Frigate video decode |
 | Battery | BAT0 — Full (100%), always plugged in |
-| Network | wan0 (Ethernet, 192.168.100.52/24), wlp0s20f3 (Wi-Fi, DOWN) |
-| USB | 3x phone tethering (usb-one6t 10.0.1.1/30, usb-one62 10.0.2.1/30, usb-one61 10.0.3.1/30) |
-| External HDD | 1.8 TB mounted at /mnt/frigate (Frigate recordings + config) |
+| Network | wan0 (Ethernet, 192.168.100.52/24, MAC `c8:4d:44:35:0b:46` = TP-Link UE306 #2 1Gb USB-LAN; previous dongle MAC `9c:69:d3:4a:f4:a9` retained in netplan for smooth swap-back), wlp0s20f3 (Wi-Fi, DOWN). Interface names set via udev `NAME=` rules in `/etc/udev/rules.d/90-usb-phones.rules` (not `.link` files). See `k8s-ops/references/network.md` for the naming convention + post-swap caveat. |
+| USB | OnePlus 6 USB-tethered as WAN failover (RNDIS subnet, k3master acts as NAT gateway). Legacy interfaces: usb-one6t 10.0.1.1/30, usb-one62 10.0.2.1/30, usb-one61 10.0.3.1/30 (peer links for the 3 phone agent nodes — re-onboarded 2026-05-12 post-HA-reroll, tainted node-role/phone 2026-06-22). |
+| External HDD | 1.8 TB mounted at /mnt/frigate — **pending decommission**. Frigate recordings + config moved to k3frigate (/mnt/frigate, 2 TB internal SATA) on 2026-04-29. Drive is no longer being written to; unmount + physical detach scheduled after the 24 h soak passes. |
 
 ---
 
@@ -72,7 +72,7 @@ For cluster topology, services, and deployments see the k8s-ops skill (`~/.claud
 ```
 0 3 * * *  ~/backup-to-jumpbox.sh >> ~/backup.log 2>&1
 ```
-Daily 3 AM: exports cluster state YAMLs + homelab-config to jumphost (192.168.100.152:~/backups/).
+Daily 3 AM: exports cluster state YAMLs + homelab-config to jumphost (192.168.100.62:~/backups/).
 
 ---
 
@@ -94,6 +94,8 @@ Host one6t  → 10.0.1.2 (user, ed25519 key)
 Host one62  → 10.0.2.2 (user, ed25519 key)
 Host one61  → 10.0.3.2 (user, ed25519 key)
 ```
+
+> **k3frigate** has no SSH alias and the hostname does not resolve via DNS. Use the IP directly (`ssh user@192.168.100.56`) or add a `Host k3frigate` entry in `~/.ssh/config`.
 
 ---
 

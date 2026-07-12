@@ -238,6 +238,18 @@ homelab-config/
 
 Total monitoring-stack files under source control: **1 → 9**. The drift itself is not eliminated, but the next operator (very possibly future me) now has a written starting point rather than a kubectl-archaeology project.
 
+## Design Decisions
+
+The non-obvious choices, listed:
+
+- **Move only Grafana to `.62`, not Prometheus.** Prometheus has to live next to the things it scrapes; relocating it would mean pushing scrape data across the LAN twice per interval. Grafana only reads; the read path is what needs the resilience.
+- **`grafana/grafana:11.5.2` pinned, never `:latest`.** Grafana 12's internal apiserver is too heavy for the AMD C-50. Pinning beats `:latest` whenever the host hardware is a known constraint. Documented in the dashboard README so the rule does not have to be re-learnt.
+- **`monitor.*` behind Cloudflare Access SSO. `uptime.*` open.** Two different audiences. The Grafana dashboard is for operators and contains query-the-cluster power; the Kuma status page is for anyone who wants to know whether the homelab is up. The auth gate has to match the audience, not the hostname pattern.
+- **Gmail SMTP, not an SMTP relay on `.62`.** Fewer moving parts now; a relay on `.62` is the next step if Gmail egress becomes a constraint. The cheapest fix that closes the worst-case is the right fix today.
+- **ChickenFlow `nodeSelector: k3master`, not `k3frigate` like hydroflow.** Symmetric pattern — both backup jobs pin to a known-good control-plane node. Picked `k3master` here for the spread; `k3frigate` is already carrying Frigate and would have been the wrong shoulder to lean on.
+- **Remove the node-exporter CPU limit entirely, not raise it.** The chart's defaults were wrong in principle, not in degree. Raising the limit pushes the next CFS clip a little further out without changing the dynamic. Removing it lets the cgroup burst during scrape and stay invisible the rest of the time.
+- **Source-control the *patches*, not the full resources.** `kube-prometheus-stack` is currently untracked by Helm; full-resource manifests would diverge from the chart's idea of itself the next time someone re-adopts under Helm. Strategic-merge patches survive that re-adoption — they describe *what changed* against the chart, not the chart itself.
+
 ## Architecture After
 
 ```
@@ -300,6 +312,21 @@ The artefact is a watcher that runs on a different physical host than the worklo
 The recurring lesson across this post and the one before it is that *each layer's local "fine" is not the system's "fine".* Cloudflare's protocol supported HA; one of its deployments did not. Tailscale's tunnel was up; the host's DNS was empty. Frigate's pod was running; the node was about to lock up. Grafana was responsive; it lived inside the thing it was supposed to report on. Telegram had a green status page; the path to it ran through the same network that was on fire.
 
 Real observability is not a stack of tools. It is a discipline of placing each watcher one layer outside what it watches, and accepting that the outermost watcher — the human reading the email — is the one that finally has to decide what is real.
+
+## Cluster Context
+
+| Node       | Role                                  | Hardware                                       | LAN IP            | OS                 |
+|------------|---------------------------------------|------------------------------------------------|-------------------|--------------------|
+| k3master   | control-plane / etcd / Prometheus host | mini PC, Intel i5-1035G1                       | 192.168.100.52    | Ubuntu 24.04 LTS   |
+| k3frigate  | control-plane / etcd / Frigate compute | mini-ITX, Intel i5-6600K, GeForce GTX 1050 Ti  | 192.168.100.56    | Ubuntu 24.04 LTS   |
+| k3sp4      | control-plane / etcd                  | Surface Pro 4, Intel i5-6300U                  | 192.168.100.53    | Ubuntu 24.04 LTS (surface kernel) |
+| one61      | worker (arm64) / Adreno inference     | OnePlus 6, Adreno 630                          | USB tether to .52 | postmarketOS       |
+| one62      | worker (arm64) / Adreno inference     | OnePlus 6, Adreno 630                          | USB tether to .52 | postmarketOS       |
+| one6t      | worker (arm64) / Adreno inference     | OnePlus 6T, Adreno 630                         | USB tether to .52 | postmarketOS       |
+| jumphost   | OOB / subnet router / **Grafana + Uptime Kuma host** | netbook board, AMD C-50 (2c/1 GHz/9 W TDP), 1.5 GiB RAM, 232 GiB SSD | 192.168.100.62    | Debian 13 (trixie) |
+| laptop     | workstation                           | Acer 16, x86_64                                | DHCP              | Fedora 44          |
+
+k3s v1.35.0+k3s3, etcd HA across the three control-plane nodes, MetalLB L2 pool on `192.168.100.200–220`. `monitoring/` namespace runs Prometheus, Alertmanager, exporters; Grafana and Uptime Kuma now live on the jumphost.
 
 ---
 

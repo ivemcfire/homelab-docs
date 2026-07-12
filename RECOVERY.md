@@ -1,5 +1,15 @@
 # Disaster Recovery — k3master Rebuild Guide
 
+## Credentials canonical
+
+| Path | Role |
+|------|------|
+| `~/homelab-docs/credentials.md.age` | **Canonical.** age-encrypted, committed to repo. Survives k3master loss. |
+| `~/homelab-secrets/credentials.md` | Working decrypt — local plaintext, gitignored. Re-derive after rebuild via Step 3. |
+
+Decryption key: jumphost `192.168.100.62:~/.age/key.txt` (with k3master copy at `~/.age/key.txt` if disk survives). The plaintext working copy under `~/homelab-secrets/` is **not authoritative** — never edit it; edit the age source then re-encrypt.
+
+
 ## If k3master crashes and needs to be rebuilt
 
 ### Step 1: Get the age decryption key
@@ -8,11 +18,11 @@ The key is stored in **two locations**:
 
 | Location | Path |
 |----------|------|
-| Jumphost (primary backup) | `user@192.168.100.152:~/.age/key.txt` |
+| Jumphost (primary backup) | `user@192.168.100.62:~/.age/key.txt` |
 | k3master (if disk survives) | `~/.age/key.txt` |
 
 ```bash
-scp user@192.168.100.152:~/.age/key.txt ~/.age/key.txt
+scp user@192.168.100.62:~/.age/key.txt ~/.age/key.txt
 ```
 
 ### Step 2: Install age
@@ -60,13 +70,16 @@ kubectl apply -f cloudflared.yaml
 kubectl apply -f backup-cronjob.yaml
 ```
 
-## Key Facts
+## Key Facts (V14 cluster)
 
-- **k3master IP:** 192.168.100.52 (wan0)
-- **Jumphost IP:** 192.168.100.152
+- **k3master IP:** 192.168.100.52 (wan0) — Control Plane 1, Traefik, etcd. Live `node-ip` and `flannel-iface` are `192.168.100.52` / `wan0` (re-bound 2026-04-29; was `10.0.1.1` / `usb-one6t`).
+- **k3frigate IP:** 192.168.100.56 — Frigate NVR compute (GTX 1050Ti, ONNX/TensorRT). Currently agent-only; planned CP2 / etcd peer per V14 not yet executed. (V14 plan name: `k3node1`.)
+- **k3node2 IP:** TBD — Control Plane 3 via Surface Dock LAN (not yet provisioned)
+- **Jumphost IP:** 192.168.100.62
 - **Gitea:** http://192.168.100.206 (mirror — repos also on GitHub)
 - **GitHub account:** ivemcfire
 - **Domain:** ayurforlife.eu (Cloudflare-managed)
+- **Gateway:** Xiaomi BE6500 @ 192.168.100.1 (locked)
 
 ## Age Public Key (for reference)
 
