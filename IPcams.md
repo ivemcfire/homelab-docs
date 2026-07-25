@@ -65,7 +65,7 @@ Last updated: 2026-04-28
 | Cam-side analytics | Available (motion, line-cross, intrusion) — **DO NOT WIRE**. Entry-level cam logic = high FP rate. Frigate detector path superior. Leave OFF. |
 | ONVIF event subscription | Available — **DO NOT WIRE** to HA / Frigate / MQTT. Architectural bloat, no signal gain over Frigate. |
 | Probing | Skip onvif-cli / wsdd unless troubleshooting connectivity. RTSP feed sufficient. |
-| Face recognition | Frigate 0.17 native, enabled on cam21 + cam22. (External CompreFace/Double Take stack retired 2026-06 — not replaced, superseded.) |
+| Face recognition | `face_recognition: enabled: true` on cam21 + cam22, but **both camera blocks are `enabled: false`**, so it is inert. (External CompreFace/Double Take stack retired 2026-06 — not replaced, superseded.) |
 | Units | 4 (cam21–24; .21 deployed off-bench, .22 Attic, .23/.24 pending) |
 
 ---
@@ -265,7 +265,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | Storage — backup | Jumphost 3.6TB USB, nightly rsync mirror (CronJob `frigate-backup` at 2 AM) |
 | Detection engine | CPU-based TFLite, 4 threads, ~28ms inference (no Coral TPU) |
 | HW accel | **NVIDIA NVDEC/NVENC on the GTX 1050 Ti** — `hwaccel_args: preset-nvidia` (global `ffmpeg:` block, plus redundant per-camera repeats on cam17/cam21/cam22). Pod gets the GPU via `runtimeClassName: nvidia` + `nvidia.com/gpu: 1`, `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. Verified 2026-07-25: `nvidia-smi` shows decoder 13% / encoder 5%, with the ONNX detector, the embeddings manager and the per-camera ffmpeg processes all resident on the GPU. |
-| Face recognition | Frigate 0.17 native (`min_area: 50`, small model). Enabled on cam17_reolink, cam21, cam22. |
+| Face recognition | Frigate 0.17 native (`min_area: 50`, small model). Set on cam17_reolink, cam21, cam22 — but only **cam17_reolink** is live; cam21/cam22 are disabled cameras. |
 | Recording mode | Event-only: 5s pre-capture, 10s post-capture |
 | Retention | **90 days** (clips + snapshots) |
 | Internet access | `https://cams.ayurforlife.eu` via Cloudflare Tunnel + Access (email OTP) |
@@ -288,16 +288,35 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 
 ### Active Cameras in Frigate
 
-| Frigate name | Camera | Detect | Record | Frigate native face_rec |
-|---|---|---|---|---|
-| cam01_front_yard | Xiongmai .11 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
-| cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
-| cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
-| cam04–06 | Xiongmai .14–.16 | — | — | No |
-| cam17_reolink | Reolink .17 | **`cam17_detect` transcode → 1280x720 @ 10fps** | Main 2560x1440 H.264 @ 25fps | **Yes** |
-| cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No |
-| cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | **Yes** |
-| cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | **Yes** |
+Names below are the **actual Frigate camera keys** from `/mnt/frigate/config/config.yml`
+(verified 2026-07-25). The `detect` / `record` columns name the **go2rtc stream** each role
+consumes, not the camera's own stream label.
+
+| Frigate key | Camera | Enabled | Detect (go2rtc src → detect res) | Record (go2rtc src) | Native face_rec |
+|---|---|---|---|---|---|
+| `cam11` | Xiongmai .11 | Yes | `cam11_sub` → 640x480 @ 5fps | `cam11` (main 1280x720 @ 25fps) | No |
+| `cam12` | Xiongmai .12 | Yes | `cam12_sub` → 640x480 @ 5fps | `cam12` (main 1280x720 @ 25fps) | No |
+| `cam13` | Xiongmai .13 | Yes | `cam13_sub` → 640x480 @ 5fps | `cam13` (main 1280x720 @ 25fps) | No |
+| `cam16` | Xiongmai .16 | Yes | `cam16_sub` → 640x480 @ 5fps | `cam16` (main 1280x720 @ 25fps) | No |
+| `cam17_reolink` | Reolink .17 | Yes | `cam17_detect` transcode → 1280x720 @ 10fps | `cam17` (main 2560x1440 H.264 @ 25fps) | **Yes** |
+| `cam19_yicam` | Yi .19 | Yes | `cam19_sub` → 640x480 @ 5fps | `cam19` (main 1280x720 @ ~20fps) | No |
+| `cam21` | ANNKE C500 .21 | **No** | `cam21_sub` → 640x360 @ 5fps | `cam21` (main 5MP H.264) | configured true, inert |
+| `cam22` | ANNKE C500 .22 (Attic) | **No** | `cam22_sub` → 640x360 @ 5fps | `cam22` (main 5MP H.264) | configured true, inert |
+
+> **Naming:** the old `cam01_front_yard` / `cam02` / `cam03` / `cam08_yicam` / `cam04–06` labels
+> in earlier revisions of this doc were never the config keys — the keys track the camera's last
+> IP octet. There is no `cam14` or `cam15` camera block: .14 is retired and .15 has never been
+> configured.
+>
+> **cam21 and cam22 are `enabled: false`** in the Frigate config, so they detect nothing, record
+> nothing, and their go2rtc streams sit idle — `/api/streams` shows no producer on any of the four
+> `cam21*` / `cam22*` entries. Their `face_recognition: enabled: true` is inert while the camera
+> block is disabled. Earlier revisions listed both as active with face recognition on; that was
+> wrong. Reason for the disable is not recorded here — check cluster-improvements before
+> re-enabling.
+>
+> Detect resolutions are what Frigate is configured to downscale to. The ANNKE sub-stream native
+> resolution is unverified (cameras disabled, streams never pulled).
 
 > **Face recognition path (Frigate 0.17 native, since 2026-06):** person event -> Frigate's
 > built-in recogniser -> `sub_label` written on the event. No external service, no MQTT hop, no
