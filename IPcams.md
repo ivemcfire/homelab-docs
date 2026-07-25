@@ -65,7 +65,7 @@ Last updated: 2026-04-28
 | Cam-side analytics | Available (motion, line-cross, intrusion) — **DO NOT WIRE**. Entry-level cam logic = high FP rate. Frigate detector path superior. Leave OFF. |
 | ONVIF event subscription | Available — **DO NOT WIRE** to HA / Frigate / MQTT. Architectural bloat, no signal gain over Frigate. |
 | Probing | Skip onvif-cli / wsdd unless troubleshooting connectivity. RTSP feed sufficient. |
-| Face recognition | None — CompreFace/Double Take stack retired 2026-06 (was: Double Take path via cam21) |
+| Face recognition | Frigate 0.17 native, enabled on cam21 + cam22. (External CompreFace/Double Take stack retired 2026-06 — not replaced, superseded.) |
 | Units | 4 (cam21–24; .21 deployed off-bench, .22 Attic, .23/.24 pending) |
 
 ---
@@ -265,7 +265,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | Storage — backup | Jumphost 3.6TB USB, nightly rsync mirror (CronJob `frigate-backup` at 2 AM) |
 | Detection engine | CPU-based TFLite, 4 threads, ~28ms inference (no Coral TPU) |
 | HW accel | Intel QSV (Ice Lake i5-1035G1) — H.264/H.265 decode |
-| Face recognition | Enabled on Reolink only (`min_area: 50`, small model, built-in Frigate 0.17) |
+| Face recognition | Frigate 0.17 native (`min_area: 50`, small model). Enabled on cam17_reolink, cam21, cam22. |
 | Recording mode | Event-only: 5s pre-capture, 10s post-capture |
 | Retention | **90 days** (clips + snapshots) |
 | Internet access | `https://cams.ayurforlife.eu` via Cloudflare Tunnel + Access (email OTP) |
@@ -288,39 +288,51 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 
 ### Active Cameras in Frigate
 
-| Frigate name | Camera | Detect | Record | Frigate native face_rec | Double Take → CompreFace |
-|---|---|---|---|---|---|
-| cam01_front_yard | Xiongmai .11 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
-| cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
-| cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
-| cam04–06 | Xiongmai .14–.16 | — | — | No | — (cam14 disabled, replaced by cam21; cam15/.16 active no DT) |
-| cam17_reolink | Reolink .17 | **`cam17_detect` transcode → 1280x720 @ 10fps** | Main 2560x1440 H.264 @ 25fps | No (was Yes, off post-purge) | **ON — labels=[person], snapshot.attempts=5** (Reolink 4K, primary face_rec source w/ cam21) |
-| cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No | Not in DT cameras list |
-| cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No | **OFF** (DT scope reduced 2026-05-10 — face_rec only on cam17/21) |
-| cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No (toggled on→off 2026-05-10, DT path chosen) | **ON — labels=[person], snapshot.attempts=5** (high-res ANNKE 5MP, primary face_rec source w/ cam17) |
+| Frigate name | Camera | Detect | Record | Frigate native face_rec |
+|---|---|---|---|---|
+| cam01_front_yard | Xiongmai .11 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
+| cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
+| cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No |
+| cam04–06 | Xiongmai .14–.16 | — | — | No |
+| cam17_reolink | Reolink .17 | **`cam17_detect` transcode → 1280x720 @ 10fps** | Main 2560x1440 H.264 @ 25fps | **Yes** |
+| cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No |
+| cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | **Yes** |
+| cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | **Yes** |
 
-> **DT path:** Frigate person event → MQTT topic frigate/events → Double Take → snapshot pull → CompreFace k3face app (key wired). Matches stored at /mnt/frigate/double-take/matches/<subject>/. CompreFace UI: http://192.168.100.212/. Reference photos must be enrolled per subject before any match works (5 subjects exist with 0 images post-purge).
+> **Face recognition path (Frigate 0.17 native, since 2026-06):** person event -> Frigate's
+> built-in recogniser -> `sub_label` written on the event. No external service, no MQTT hop, no
+> separate enrolment UI. Manage the face library in the Frigate UI (Settings -> Face Library) or
+> over `GET/POST /api/faces`.
+>
+> Enrolled as of 2026-07-25: `goran` (64 images), `virginia` (79), `miraya` (72), `ivalin` (45),
+> `rayna` (32), `Isko Maistora` (9), plus Frigate's own `train` bucket (200).
+>
+> **Retired 2026-06:** CompreFace (`k3face`, was at `http://192.168.100.212/`) and Double Take,
+> along with `/mnt/frigate/double-take/matches/`. All gone from the cluster — no deployment, no
+> namespace, `.212` does not answer. Nothing points at them any more.
 
 ### Event filter helpers (on k3master, ~/bin/)
 
-Three CLI scripts on k3master (in PATH after ~/bin: prepend) for browsing Frigate events by face recognition status:
+Four CLI scripts on k3master (in PATH after `~/bin:` prepend) for browsing Frigate events by
+face recognition status. They query Frigate's own `/api/events` and were **not** affected by the
+Double Take retirement — only their wording referenced DT.
 
 | Command | What it does |
 |---------|--------------|
-| frigate-strangers [limit] | Lists recent events with no sub_label (DT didn't recognize a known face — likely strangers). |
-| frigate-subject <name> [limit] | Lists events where DT matched the named subject (e.g. frigate-subject Ivalin). |
-| frigate-sublabels [limit] | Distribution count of all sub_labels across recent events (sanity check for DT push-back). |
-| frigate-family [limit] | Lists events recognized as any family member (Goran/Ivalin/Miraya/Rayna/Virginia). |
+| frigate-strangers [limit] | Lists recent events with no sub_label (no known face matched — likely strangers). |
+| frigate-subject <name> [limit] | Lists events matched to the named subject. **Name is case-sensitive and the library is lowercase** — `frigate-subject ivalin`, not `Ivalin`. |
+| frigate-sublabels [limit] | Distribution count of all sub_labels across recent events (sanity check that recognition is firing). Unmatched events are bucketed as `<stranger>`. |
+| frigate-family [limit] | Lists events recognized as any family member (`goran,ivalin,miraya,rayna,virginia`). Returned nothing until 2026-07-25 — it hardcoded the DT-era capitalised names while the native face library enrolled them lowercase, and `sub_labels` matching is case-sensitive. `SUBJECTS` lowercased 2026-07-25. |
 
 ### Bookmark URLs (Frigate UI sort)
 
-- Family events: `http://192.168.100.209:5000/events?sub_labels=Goran,Ivalin,Miraya,Rayna,Virginia`
+- Family events: `http://192.168.100.209:5000/events?sub_labels=goran,ivalin,miraya,rayna,virginia`
 - All events (UI default): `http://192.168.100.209:5000/events`
 - Strangers (no sub_label): UI doesn't support negation — use `frigate-strangers` CLI instead
 
-For per-subject filtering append e.g. `?sub_labels=Ivalin`.
+For per-subject filtering append e.g. `?sub_labels=ivalin`. Subject names are **case-sensitive** and the enrolled library is lowercase.
 
-Sub_labels are populated by Double Take when it matches a face with confidence ≥ 70 (per detect.match.confidence in DT config). Strangers and unknown faces get no sub_label, so frigate-strangers is the natural feed for browse non-family clips. Frigate UI search box also accepts sub_labels:Ivalin or similar.
+Sub_labels are populated by Frigate's native face recognition when it matches an enrolled face. Strangers and unknown faces get no sub_label, so `frigate-strangers` is the natural feed for browsing non-family clips. The Frigate UI search box also accepts `sub_labels:ivalin` or similar.
 
 > **cam17 note:** Records the main stream (2560x1440 H.264); detection runs on the
 > `cam17_detect` go2rtc transcode downscaled to 720p — preserves pixel detail for face
