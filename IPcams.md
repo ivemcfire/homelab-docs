@@ -23,14 +23,15 @@ Last updated: 2026-04-28
 | Field | Value |
 |-------|-------|
 | Manufacturer | Reolink |
-| Type | 4K IP Camera |
+| Model | RLC-812A (`IPC_523B188MP`), fw `v3.1.0.920_2402207844` |
+| Type | 4K-capable IP camera — main stream run at 2560x1440 H.264 (see Reolink Stream Specs) |
 | Protocol | ONVIF, RTSP (TCP only) |
 | RTSP port | 554 |
 | HTTPS port | 443 |
 | ONVIF port | 8000 |
 | Disabled ports | HTTP 80, Media 9000, RTMP 1935 |
 | Face recognition | Enabled (Frigate 0.17 built-in) |
-| Units | 2 (cam17 @ .17, cam18 @ .18 — same Reolink 4K model) |
+| Units | 2 (cam17 @ .17, cam18 @ .18 — same RLC-812A model) |
 
 ### Yi Home 720p (x1)
 
@@ -80,7 +81,7 @@ Last updated: 2026-04-28
 | cam15 | 192.168.100.15 | — | — | Pending config |
 | cam16 | 192.168.100.16 | — | — | Pending config |
 | reolink | 192.168.100.17 | 192.168.100.254 | 192.168.100.254 | Configured |
-| cam18 | 192.168.100.18 | 192.168.100.254 | 192.168.100.254 | Reolink 4K (same model as cam17) — configured |
+| cam18 | 192.168.100.18 | 192.168.100.254 | 192.168.100.254 | Reolink RLC-812A (same model as cam17) — configured; **set main to 2560x1440 H.264 before adding to go2rtc** |
 | yi-cam | 192.168.100.19 | 192.168.100.1 | — | Configured (Wi-Fi) |
 | cam21 ANNKE | 192.168.100.21 | 192.168.100.254 | 192.168.100.254 | Configured (deployed off bench 2026-05-10) |
 | cam22 ANNKE | 192.168.100.22 | 192.168.100.254 | 192.168.100.254 | Configured (Attic, deployed earlier) |
@@ -88,7 +89,7 @@ Last updated: 2026-04-28
 | cam24 ANNKE | 192.168.100.24 | — | — | Pending — same hardware as .21/.22 |
 
 **Subnet:** 192.168.100.0/24
-**IP range Xiongmai:** .11–.16 (.14 retired) | **Reolink:** .17–.18 | **ANNKE C500:** .21–.24 | **Yi:** .19
+**IP range Xiongmai:** .11–.16 (.14 retired) | **Reolink RLC-812A:** .17–.18 | **ANNKE C500:** .21–.24 | **Yi:** .19
 
 ---
 
@@ -174,13 +175,46 @@ Sub:   rtsp://admin:@192.168.100.XX:554/user=admin&password=&channel=1&stream=1.
 
 | Stream | Resolution | Codec | Profile | FPS | Bitrate | Audio |
 |--------|------------|-------|---------|-----|---------|-------|
-| Main | 3840x2160 (4K) | H.265 (HEVC) | Main | 25 | 6144 kbps | AAC mono 16kHz |
+| Main | 2560x1440 | H.264 | High | 25 | 8192 kbps | AAC mono 16kHz |
 | Sub | 640x360 | H.264 | High | 15 | 512 kbps | AAC mono 16kHz |
 
 > **Sub stream limitation:** 640x360 is the **maximum and only** resolution option.
 > FPS range: 7–15 (set to 15). Bitrate range: 256–512 kbps (set to 512).
 > Sub stream is NOT used for Frigate detection — too low resolution for face recognition.
-> Main 4K stream is used for both detect + record; Frigate downscales to 720p for detection.
+> Main stream is used for **record**; detect uses the `cam17_detect` go2rtc transcode (1280x720).
+
+> **Main stream codec — changed 2026-07-25 (H.265 -> H.264).** Chrome on Linux ships no software
+> HEVC decoder, so an H.265 main stream will not play in the Frigate UI (live view *or* recordings)
+> from a Fedora desktop. On the RLC-812A the codec is **bound to resolution**:
+>
+> | Main resolution | Codec available |
+> |---|---|
+> | 3840x2160 | H.265 only |
+> | 2560x1440 | H.264 |
+> | 2304x1296 | H.264 |
+>
+> The camera web UI does **not** expose a codec dropdown — changing resolution alone will not flip it.
+> Set it over the HTTP API instead:
+>
+> ```
+> curl -sk 'https://192.168.100.17/api.cgi?user=admin&password=<REOLINK_PASSWORD>' \
+>   -H 'Content-Type: application/json' \
+>   -d '[{"cmd":"SetEnc","action":0,"param":{"Enc":{"channel":0,"audio":0,
+>     "mainStream":{"size":"2560*1440","width":2560,"height":1440,"vType":"h264",
+>                   "frameRate":25,"bitRate":8192,"profile":"High","gop":2}}}}]'
+> ```
+>
+> Query the supported combinations first with
+> `[{"cmd":"GetEnc","action":1,"param":{"channel":0}}]` — the `range` key lists every
+> resolution/codec pair the firmware allows. Current settings: `?cmd=GetEnc`.
+>
+> The camera drops its API for ~30s while the encoder re-initialises. **Restart the Frigate
+> deployment afterwards** (`kubectl rollout restart deploy/frigate -n frigate`) — go2rtc caches
+> the stream SDP and will keep reporting the old codec until it re-probes.
+>
+> No firmware fix exists: `v3.1.0.920_2402207844` is the latest build for this hardware, and 4K
+> H.264 exceeds the SoC encoder budget. Recordings made **before 2026-07-25** are still HEVC and
+> will not play in Chrome.
 
 **Reolink RTSP URL format:**
 ```
@@ -260,7 +294,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | cam02 | Xiongmai .12 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
 | cam03 | Xiongmai .13 | Sub 640x480 @ 5fps | Main 720p @ 25fps | No | Not in DT cameras list |
 | cam04–06 | Xiongmai .14–.16 | — | — | No | — (cam14 disabled, replaced by cam21; cam15/.16 active no DT) |
-| cam07_reolink | Reolink .17 | **Main 4K → 1280x720 @ 10fps** | Main 4K H.265 @ 25fps | No (was Yes, off post-purge) | **ON — labels=[person], snapshot.attempts=5** (Reolink 4K, primary face_rec source w/ cam21) |
+| cam17_reolink | Reolink .17 | **`cam17_detect` transcode → 1280x720 @ 10fps** | Main 2560x1440 H.264 @ 25fps | No (was Yes, off post-purge) | **ON — labels=[person], snapshot.attempts=5** (Reolink 4K, primary face_rec source w/ cam21) |
 | cam08_yicam | Yi .19 | Sub 640x480 @ 5fps | Main 720p @ 20fps | No | Not in DT cameras list |
 | cam22 | ANNKE C500 .22 (Attic) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No | **OFF** (DT scope reduced 2026-05-10 — face_rec only on cam17/21) |
 | cam21 | ANNKE C500 .21 (Bench-deployed 2026-05-10) | Main 1920x1080 @ 5fps (TCP) | Main 5MP H.264 @ ? fps | No (toggled on→off 2026-05-10, DT path chosen) | **ON — labels=[person], snapshot.attempts=5** (high-res ANNKE 5MP, primary face_rec source w/ cam17) |
@@ -288,15 +322,17 @@ For per-subject filtering append e.g. `?sub_labels=Ivalin`.
 
 Sub_labels are populated by Double Take when it matches a face with confidence ≥ 70 (per detect.match.confidence in DT config). Strangers and unknown faces get no sub_label, so frigate-strangers is the natural feed for browse non-family clips. Frigate UI search box also accepts sub_labels:Ivalin or similar.
 
-> **cam07 note:** Uses main 4K stream for both detect and record. Frigate downscales 4K to 720p
-> for detection — preserves native pixel detail for face recognition. Sub stream (640x360) is
-> too low resolution. Higher CPU usage than other cameras due to 4K H.265 decode.
+> **cam17 note:** Records the main stream (2560x1440 H.264); detection runs on the
+> `cam17_detect` go2rtc transcode downscaled to 720p — preserves pixel detail for face
+> recognition. Sub stream (640x360) is too low resolution to detect on. Still the most
+> expensive camera in the cluster, but cheaper since 2026-07-25: the source is H.264, so
+> both the record copy and the detect transcode skip HEVC decode.
 
 ### Face Recognition Lessons Learned
 
 1. **Upscaling doesn't help.** Setting detect to 1280x720 on a 640x360 sub stream just stretches pixels — no new detail.
 2. **Downscaling preserves detail.** 4K main → 720p detect retains sharp facial features.
-3. **go2rtc transcode is CPU-heavy.** `ffmpeg:cam07#video=h264#width=1280#height=720` caused 80-90% CPU. Direct 4K to Frigate is better.
+3. **go2rtc transcode is CPU-heavy.** `ffmpeg:cam07#video=h264#width=1280#height=720` caused 80-90% CPU (measured while the source was 4K H.265, no `#hardware` flag). The current `cam17_detect` uses `#hardware` on an H.264 source, which is far cheaper.
 4. **Lowering thresholds is not a fix.** Reduces confidence requirements without improving input quality.
 5. **Training data required.** Models loaded (`facedet.onnx`, `facenet.tflite`) but need reference photos via Frigate UI.
 6. **`face` is not a valid track object.** Default TFLite model uses COCO classes — face recognition is a separate pipeline on person detections.
