@@ -2,7 +2,7 @@
 
 Last updated: 2026-04-28
 
-**Network (V14):** Cameras on flat `192.168.100.0/24` via Service Room Zyxel switch. VLAN 30 deferred to Phase 2+. Frigate compute target = k3node1 (i5-6600 + GTX 1050Ti) once Phase 2 onboarding complete.
+**Network (V14):** Cameras on flat `192.168.100.0/24` via Service Room Zyxel switch. VLAN 30 deferred to Phase 2+. Frigate runs on **k3frigate** (192.168.100.56 — i5-6600K + GTX 1050 Ti); the node was called `k3node1` when this line was written.
 
 ---
 
@@ -258,13 +258,13 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | NVR | Frigate 0.17.2 (`ghcr.io/blakeblackshear/frigate:0.17.1`) |
 | Namespace | `frigate` |
 | MetalLB IP | 192.168.100.209 (Web UI :5000, RTSP restream :8554) |
-| Node | k3master (amd64 — CPU video decode) |
+| Node | **k3frigate** (192.168.100.56 — Intel i5-6600K 4c @ 3.5GHz, NVIDIA GTX 1050 Ti 4GB, driver 535.309.01). Pinned via `nodeSelector: kubernetes.io/hostname=k3frigate`. |
 | MQTT | Mosquitto at 192.168.100.207:1883 |
-| Storage — primary | Local 1.8TB HDD on k3master (`/dev/sda1` → `/mnt/frigate`) |
-| Storage — config DB | hostPath `/mnt/frigate/config` on k3master |
+| Storage — primary | Local 3.6TB HDD on k3frigate (`/dev/sdb` → `/mnt/frigate`, 33G used) |
+| Storage — config DB | hostPath `/mnt/frigate/config` on k3frigate — **authoritative**; the ConfigMap can lag, always read/edit the hostPath |
 | Storage — backup | Jumphost 3.6TB USB, nightly rsync mirror (CronJob `frigate-backup` at 2 AM) |
 | Detection engine | CPU-based TFLite, 4 threads, ~28ms inference (no Coral TPU) |
-| HW accel | Intel QSV (Ice Lake i5-1035G1) — H.264/H.265 decode |
+| HW accel | **NVIDIA NVDEC/NVENC on the GTX 1050 Ti** — `hwaccel_args: preset-nvidia` (global `ffmpeg:` block, plus redundant per-camera repeats on cam17/cam21/cam22). Pod gets the GPU via `runtimeClassName: nvidia` + `nvidia.com/gpu: 1`, `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. Verified 2026-07-25: `nvidia-smi` shows decoder 13% / encoder 5%, with the ONNX detector, the embeddings manager and the per-camera ffmpeg processes all resident on the GPU. |
 | Face recognition | Frigate 0.17 native (`min_area: 50`, small model). Enabled on cam17_reolink, cam21, cam22. |
 | Recording mode | Event-only: 5s pre-capture, 10s post-capture |
 | Retention | **90 days** (clips + snapshots) |
@@ -283,7 +283,7 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 | Tunnel ID | `471b5cdf-82cd-430c-a275-c3068c50eaa4` |
 | Hostname | `cams.ayurforlife.eu` |
 | Auth | Cloudflare Access — email OTP, allowed: `ayurforlife@gmail.com`, 24h sessions |
-| Deployment | cloudflared pod in frigate namespace, pinned to k3master |
+| Deployment | cloudflared in the frigate namespace — **2 replicas** (`maxSurge: 0`), currently one on k3frigate and one on k3master. Not pinned. |
 | Manifest | `~/frigate-k8s/cloudflared.yaml` |
 
 ### Active Cameras in Frigate
@@ -307,9 +307,15 @@ Sub:   rtsp://192.168.100.19:554/ch0_1.h264
 > Enrolled as of 2026-07-25: `goran` (64 images), `virginia` (79), `miraya` (72), `ivalin` (45),
 > `rayna` (32), `Isko Maistora` (9), plus Frigate's own `train` bucket (200).
 >
-> **Retired 2026-06:** CompreFace (`k3face`, was at `http://192.168.100.212/`) and Double Take,
-> along with `/mnt/frigate/double-take/matches/`. All gone from the cluster — no deployment, no
-> namespace, `.212` does not answer. Nothing points at them any more.
+> **Retired 2026-06:** CompreFace (`k3face`, was at `http://192.168.100.212/`) and Double Take.
+> Gone from the *cluster* — no deployment, no statefulset, no service, no namespace, and `.212`
+> does not answer. Nothing points at them any more.
+>
+> **Their data is still on disk** on k3frigate and is not referenced by anything:
+> `/mnt/frigate/double-take` (112M, 1407 files in `matches/`, last written 2026-06-10) and
+> `/mnt/frigate/compreface` (529M, last written 2026-05-09). ~640M reclaimable whenever you are
+> satisfied nothing needs re-deriving from it — the native face library at `/api/faces` is
+> independently enrolled and does not read these paths.
 
 ### Event filter helpers (on k3master, ~/bin/)
 
